@@ -1,0 +1,20 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0\fnil\fcharset0 Calibri;}}
+{\colortbl ;\red0\green51\red102;\red0\green0\red0;}
+\viewkind4\uc1\pard\sa300\sl276\slmult1\f0\fs36\b\cf1 mohdEduApp - Complete App Overview & User Guide\par
+\fs22\i\cf2 Detailed page-by-page explanation and technical breakdown for presentation & evaluation.\par
+\b0\i0\sa200\sl276\slmult1\n{\b\fs26\cf1 1. App Purpose & Overview\par}
+{\fs22\cf2 mohdEduApp is a comprehensive, ethical, and modern Android educational application built using Jetpack Compose and Material Design 3. It is designed to support tertiary and lifelong learners in course discovery, interactive practice, random self-assessment quizzes, progress tracking, and study management.\par}\sa300\par
+{\b\fs26\cf1 2. Landing / Home Screen\par}
+{\fs22\cf2 Entry point of the application. It features a personalized welcome banner for students, a real-time search bar with input validation, category filter chips (All, Mobile, Algorithms, Architecture, Database), and a scrollable list of featured courses with duration, lessons count, and progress indicators.\par}\sa300\par
+{\b\fs26\cf1 3. Activity / Quiz Screen\par}
+{\fs22\cf2 The core interactive learning module. It presents a pool of 10 comprehensive educational questions and dynamically selects 3 random questions every time a quiz is launched (.shuffled().take(3)). It includes multiple-choice buttons, audio feedback tones (ToneGenerator) for correct and incorrect answers, progress bars, and completion score summaries.\par}\sa300\par
+{\b\fs26\cf1 4. Practice / Web API Screen\par}
+{\fs22\cf2 Provides immersive lecture view lists with module durations and completion status. Additionally, it integrates a live Math Web API solver powered by Retrofit (api.mathjs.org) allowing students to evaluate mathematical expressions remotely.\par}\sa300\par
+{\b\fs26\cf1 5. Statistics / Rank & Score Screen\par}
+{\fs22\cf2 Displays the student's academic rank (e.g., Gold Scholar), statistics on enrolled courses, and a detailed Quiz Score Record List tracking past quiz scores and dates. It also includes enrolled course management with explicit Delete Confirmation dialog safety.\par}\sa300\par
+{\b\fs26\cf1 6. Settings & Preferences Screen\par}
+{\fs22\cf2 Allows students to toggle between Light and Dark color themes instantly, manage push notification preferences for study reminders, and view app version and build metadata.\par}\sa300\par
+{\b\fs26\cf1 7. Technical Architecture & Advanced Features\par}
+{\fs22\cf2 Built following strict Android best practices: MVVM architecture, Jetpack Navigation Component (NavHost & NavController), Preferences DataStore for local persistence, WorkManager (ProgressSyncWorker) for background tasks, runtime permissions with ethical pre-prompt rationale, and non-GUI unit tests.\par}\sa300\par
+}
