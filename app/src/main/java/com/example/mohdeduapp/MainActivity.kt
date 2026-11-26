@@ -23,7 +23,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.mohdeduapp.ui.theme.MohdEduAppTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 data class QuizTopic(
     val id: Int,
@@ -50,31 +55,46 @@ data class QuizScoreRecord(
 )
 
 class MainActivity : ComponentActivity() {
+    private lateinit var dataStoreManager: DataStoreManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        dataStoreManager = DataStoreManager(applicationContext)
         enableEdgeToEdge()
+
         setContent {
             var darkThemeOverride by remember { mutableStateOf(false) }
             var soundEnabled by remember { mutableStateOf(true) }
             var timerEnabled by remember { mutableStateOf(true) }
 
-            val scoreList = remember {
-                mutableStateListOf(
-                    QuizScoreRecord("Player 1", "Jetpack Compose Quiz", 5, 5, "Today"),
-                    QuizScoreRecord("Alex", "Kotlin Coroutines & Flow", 4, 5, "Yesterday"),
-                    QuizScoreRecord("Player 1", "MVVM & Clean Architecture", 5, 5, "2 days ago"),
-                )
-            }
+            val initialPlayers = runBlocking { dataStoreManager.playersFlow.first() }
+            val initialScores = runBlocking { dataStoreManager.scoresFlow.first() }
+
+            val registeredPlayers = remember { mutableStateListOf(*initialPlayers.toTypedArray()) }
+            val scoreList = remember { mutableStateListOf(*initialScores.toTypedArray()) }
+
+            val coroutineScope = rememberCoroutineScope()
 
             MohdEduAppTheme(darkTheme = darkThemeOverride) {
                 QuizAppRoot(
                     scoreList = scoreList,
+                    registeredPlayers = registeredPlayers,
                     darkTheme = darkThemeOverride,
                     onDarkThemeChanged = { darkThemeOverride = it },
                     soundEnabled = soundEnabled,
                     onSoundEnabledChanged = { soundEnabled = it },
                     timerEnabled = timerEnabled,
                     onTimerEnabledChanged = { timerEnabled = it },
+                    onScoresChanged = { newScores ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dataStoreManager.saveScores(newScores)
+                        }
+                    },
+                    onPlayersChanged = { newPlayers ->
+                        coroutineScope.launch(Dispatchers.IO) {
+                            dataStoreManager.savePlayers(newPlayers)
+                        }
+                    },
                 )
             }
         }
@@ -85,18 +105,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun QuizAppRoot(
     scoreList: MutableList<QuizScoreRecord>,
+    registeredPlayers: MutableList<String>,
     darkTheme: Boolean,
     onDarkThemeChanged: (Boolean) -> Unit,
     soundEnabled: Boolean,
     onSoundEnabledChanged: (Boolean) -> Unit,
     timerEnabled: Boolean,
     onTimerEnabledChanged: (Boolean) -> Unit,
+    onScoresChanged: (List<QuizScoreRecord>) -> Unit,
+    onPlayersChanged: (List<String>) -> Unit,
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var activeQuizTopic by remember { mutableStateOf<QuizTopic?>(null) }
-    var currentPlayerName by remember { mutableStateOf("Player 1") }
-    var pendingTopicToStart by remember { mutableStateOf<QuizTopic?>(null) }
-    var showPlayerDialog by remember { mutableStateOf(false) }
+    var currentPlayerName by remember { mutableStateOf(registeredPlayers.firstOrNull() ?: "Player 1") }
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
@@ -112,42 +133,6 @@ fun QuizAppRoot(
             QuizTopic(3, "Data Structures & Algorithms", "Algorithms", "Assess essential DSA patterns, search trees, and complexity analysis.", 12),
             QuizTopic(4, "MVVM & Clean Architecture", "Architecture", "Test your understanding of scalable app architecture, ViewModels, and repositories.", 12),
             QuizTopic(5, "Room Database & SQLite", "Database", "Practice local persistence, entities, DAOs, and migration queries.", 12),
-        )
-    }
-
-    if (showPlayerDialog) {
-        var tempName by remember { mutableStateOf(currentPlayerName) }
-        AlertDialog(
-            onDismissRequest = { showPlayerDialog = false },
-            title = { Text("Enter Player / Quiz Participant") },
-            text = {
-                Column {
-                    Text("Enter player name before starting the quiz:")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = tempName,
-                        onValueChange = { tempName = it },
-                        singleLine = true,
-                        label = { Text("Player Name") },
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (tempName.isNotBlank()) {
-                        currentPlayerName = tempName.trim()
-                    }
-                    showPlayerDialog = false
-                    activeQuizTopic = pendingTopicToStart
-                }) {
-                    Text("Start Quiz")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPlayerDialog = false }) {
-                    Text("Cancel")
-                }
-            },
         )
     }
 
@@ -212,6 +197,7 @@ fun QuizAppRoot(
                 timerEnabled = timerEnabled,
                 onFinishQuiz = { score, total ->
                     scoreList.add(0, QuizScoreRecord(currentPlayerName, activeQuizTopic!!.title, score, total, "Just now"))
+                    onScoresChanged(scoreList.toList())
                     activeQuizTopic = null
                     selectedTab = 2 // Jump to scores
                 },
@@ -231,23 +217,27 @@ fun QuizAppRoot(
                     searchQuery = searchQuery,
                     onSearchQueryChanged = { searchQuery = it },
                     currentPlayerName = currentPlayerName,
-                    onPlayerNameChanged = { currentPlayerName = it },
-                    onStartQuiz = { topic ->
-                        pendingTopicToStart = topic
-                        showPlayerDialog = true
+                    registeredPlayers = registeredPlayers,
+                    onPlayerSelected = { currentPlayerName = it },
+                    onAddPlayer = { newPlayer ->
+                        if (newPlayer.isNotBlank() && !registeredPlayers.contains(newPlayer)) {
+                            registeredPlayers.add(newPlayer.trim())
+                            currentPlayerName = newPlayer.trim()
+                            onPlayersChanged(registeredPlayers.toList())
+                        }
                     },
+                    onStartQuiz = { activeQuizTopic = it },
                     modifier = Modifier.padding(innerPadding),
                 )
                 1 -> ActivityStartScreen(
                     topics = topics,
-                    onStartQuiz = { topic ->
-                        pendingTopicToStart = topic
-                        showPlayerDialog = true
-                    },
+                    currentPlayerName = currentPlayerName,
+                    onStartQuiz = { activeQuizTopic = it },
                     modifier = Modifier.padding(innerPadding),
                 )
                 2 -> ScoresScreen(
                     scoreList = scoreList,
+                    registeredPlayers = registeredPlayers,
                     modifier = Modifier.padding(innerPadding),
                 )
                 3 -> SettingsScreen(
@@ -257,7 +247,10 @@ fun QuizAppRoot(
                     onSoundEnabledChanged = onSoundEnabledChanged,
                     timerEnabled = timerEnabled,
                     onTimerEnabledChanged = onTimerEnabledChanged,
-                    onClearScores = { scoreList.clear() },
+                    onClearScores = {
+                        scoreList.clear()
+                        onScoresChanged(emptyList())
+                    },
                     modifier = Modifier.padding(innerPadding),
                 )
             }
@@ -277,10 +270,50 @@ fun TopicsScreen(
     searchQuery: String,
     onSearchQueryChanged: (String) -> Unit,
     currentPlayerName: String,
-    onPlayerNameChanged: (String) -> Unit,
+    registeredPlayers: List<String>,
+    onPlayerSelected: (String) -> Unit,
+    onAddPlayer: (String) -> Unit,
     onStartQuiz: (QuizTopic) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showAddPlayerDialog by remember { mutableStateOf(false) }
+    var newPlayerInput by remember { mutableStateOf("") }
+
+    if (showAddPlayerDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddPlayerDialog = false },
+            title = { Text("Add New Player / User") },
+            text = {
+                Column {
+                    Text("Enter participant name:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newPlayerInput,
+                        onValueChange = { newPlayerInput = it },
+                        singleLine = true,
+                        label = { Text("Player Name") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newPlayerInput.isNotBlank()) {
+                        onAddPlayer(newPlayerInput)
+                        newPlayerInput = ""
+                    }
+                    showAddPlayerDialog = false
+                }) {
+                    Text("Add & Switch")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddPlayerDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     val filteredTopics = topics.filter { topic ->
         val matchesCategory = (selectedCategory == "All") || (topic.category == selectedCategory)
         val matchesSearch = searchQuery.isBlank() || topic.title.contains(searchQuery, ignoreCase = true) || topic.description.contains(searchQuery, ignoreCase = true)
@@ -306,18 +339,42 @@ fun TopicsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Welcome, $currentPlayerName 👤",
+                            text = "Active User: $currentPlayerName 👤",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
-                        Badge { Text("Active Player") }
+                        Button(
+                            onClick = { showAddPlayerDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        ) {
+                            Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Switch/Add")
+                        }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Ready for your quiz? Scores are tracked per player in the Score History tab.",
+                        text = "Data & preferences are persisted locally via DataStore DB and inspectable in Android Studio.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
+
+        // Registered Players Selector Chips
+        item {
+            Text("Registered Players / Users (Persistent DB):", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(registeredPlayers) { player ->
+                    FilterChip(
+                        selected = currentPlayerName == player,
+                        onClick = { onPlayerSelected(player) },
+                        label = { Text("👤 $player") },
                     )
                 }
             }
@@ -457,6 +514,7 @@ fun TopicsScreen(
 @Composable
 fun ActivityStartScreen(
     topics: List<QuizTopic>,
+    currentPlayerName: String,
     onStartQuiz: (QuizTopic) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -473,9 +531,9 @@ fun ActivityStartScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Interactive Quiz Activity Hub ⚡", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text("Active Player: $currentPlayerName 👤", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Select any topic below to launch a dynamic assessment session. Questions are randomized every attempt!", style = MaterialTheme.typography.bodyMedium)
+                    Text("Select any topic below to launch a dynamic assessment session. Scores will be saved under $currentPlayerName in persistent DB.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -676,7 +734,7 @@ fun QuizScreen(
                     Text("Your Score: $correctCount / ${randomQuestions.size}", style = MaterialTheme.typography.titleLarge)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = { onFinishQuiz(correctCount, randomQuestions.size) }) {
-                        Text("Save Score & View History")
+                        Text("Save Score to DB & View History")
                     }
                 }
             }
@@ -762,6 +820,7 @@ fun QuizScreen(
 @Composable
 fun ScoresScreen(
     scoreList: List<QuizScoreRecord>,
+    registeredPlayers: List<String>,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -773,20 +832,40 @@ fun ScoresScreen(
     ) {
         item {
             Text(
-                text = "Quiz Score History List",
+                text = "Quiz Score History & DB Inspection",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Track quiz performance and scores grouped by players.",
+                text = "Persistent user data and scores stored in Preferences DataStore DB.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
         }
 
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Stored Users / Players in DB (${registeredPlayers.size})", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(registeredPlayers) { p ->
+                            val pCount = scoreList.count { it.playerName == p }
+                            Badge {
+                                Text("👤 $p ($pCount saved scores)", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if (scoreList.isEmpty()) {
             item {
-                Text("No quiz scores recorded yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
+                Text("No quiz scores recorded yet in database.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.outline)
             }
         } else {
             items(scoreList) { record ->
@@ -802,7 +881,7 @@ fun ScoresScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
-                            Text("👤 Player: ${record.playerName}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("👤 DB Player: ${record.playerName}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(record.topicTitle, style = MaterialTheme.typography.bodyMedium)
                             Text("Date: ${record.date}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
@@ -840,14 +919,14 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
             title = { Text("Clear All Score History") },
-            text = { Text("Are you sure you want to clear all your saved quiz scores? This action cannot be undone.") },
+            text = { Text("Are you sure you want to clear all your saved quiz scores from local database? This action cannot be undone.") },
             confirmButton = {
                 TextButton(onClick = {
                     onClearScores()
                     showClearConfirm = false
-                    Toast.makeText(context, "Score history cleared successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Database cleared successfully!", Toast.LENGTH_SHORT).show()
                 }) {
-                    Text("Clear", color = MaterialTheme.colorScheme.error)
+                    Text("Clear DB", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
@@ -944,7 +1023,7 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = /*******/ Arrangement.SpaceBetween,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Notifications, contentDescription = null)
@@ -1041,7 +1120,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Clear All Score History", color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text("Clear Database History", color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
@@ -1057,7 +1136,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("About EduQuiz", fontWeight = FontWeight.Bold)
-                            Text("Version 1.0.0 • Built with Jetpack Compose", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                            Text("Version 1.0.0 • Persistent Preferences DataStore DB", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                 }
