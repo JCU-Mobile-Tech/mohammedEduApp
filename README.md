@@ -1,61 +1,46 @@
-# mohdEduApp — Educational Learning & Study Assistant
+# EduQuiz — Interactive Educational Study & Quiz Assistant
 
-`mohdEduApp` is a modern, ethical, and feature-rich Android educational application developed using **Jetpack Compose** and **Material Design 3**, targeting tertiary and lifelong learners. It supports skill-based learning, progress tracking, course discovery, and robust study management.
-
----
-
-## 📸 App Screenshots & Proof
-
-| Home / Discover Screen | Quiz Activity Screen | Statistics & Rank Screen |
-| :---: | :---: | :---: |
-| ![Home Screen](screenshots/home.png) | ![Activity Screen](screenshots/activity.png) | ![Statistics Screen](screenshots/statistics.png) |
+`EduQuiz` (`mohdEduApp`) is a modern, ethical, and feature-rich Android educational application developed using **Jetpack Compose** and **Material Design 3**, focusing on interactive quizzes, rich question banks, real-time score history tracking, and customizable preferences.
 
 ---
 
-## 📱 Core Screens & Navigation
+## 📸 App Screenshots & UI Proof
 
-The application features a robust bottom-navigation structure complying with modern Android architecture guidelines:
-1. **Landing / Home Screen**: Entry point displaying a welcome banner, real-time search, category filter chips, and interactive course catalogs.
-2. **Activity / Course Detail Screen**: Main interactive learning view providing course details, lesson breakdown with completion status, and interactive **Enroll / Unenroll** functionality.
-3. **My Learning / User Statistics Screen**: Dedicated view tracking enrolled courses, learning metrics, and progress percentages.
-4. **Settings & Preferences Screen**: Allows users to adjust appearance (Dark/Light theme toggle), manage study notification preferences, and review app metadata.
+| Topics / Home Screen | Quiz Screen | Score History Screen | Settings Screen |
+| :---: | :---: | :---: | :---: |
+| ![Home](screenshots/home.png) | ![Activity](screenshots/activity.png) | ![Statistics](screenshots/statistics.png) | ![Settings](screenshots/home.png) |
+
+---
+
+## 📱 Core Features & Screens
+
+1. **Topics & Discover Screen**:
+   - Features search bar, category filter chips, difficulty filters (*Easy, Medium, Hard*), and an interactive **Daily Quick Flashcard** widget (tap to flip).
+   - Rich question pools across 5 core study topics (*Jetpack Compose, Kotlin Coroutines, Data Structures & Algorithms, MVVM Architecture, Room Database*).
+2. **Interactive Quiz Activity Screen**:
+   - Dynamically selects 5 random questions from a rich pool of 12 detailed curriculum-aligned questions per topic.
+   - Includes an active **20-second Question Timer**, **Streak Counter (🔥)**, audio feedback tones, and **Instant Explanations** revealed after each answer.
+3. **Score History List Screen**:
+   - Tracks past quiz performance, scores, totals, and timestamps.
+4. **Settings & Preferences Screen**:
+   - Fully customizable options for **Dark Theme**, **Sound Effects**, **Question Timer**, **Push Notifications**, **Support & Community** (*Rate App, Share with Friends, Help & FAQ*), and **Clear Score History** with confirmation.
 
 ---
 
 ## 🛠️ Architecture & Technical Stack
 
 - **UI Framework**: Jetpack Compose & Material Design 3 for a responsive, accessible interface.
-- **Architecture Pattern**: MVVM (Model-View-ViewModel) with Unidirectional Data Flow (UDF) and Repository pattern for clean separation of concerns.
-- **Local Persistence (Database Programming)**: Utilizes **Preferences DataStore** for persisting user enrollment status, learning progress, and app preferences locally across app restarts.
-- **Asynchronous Programming**: Built with **Kotlin Coroutines & Flow** for non-blocking asynchronous data streams and network simulations.
+- **Architecture Pattern**: MVVM (Model-View-ViewModel) with Unidirectional Data Flow (UDF) and Repository pattern.
+- **Local Persistence**: Utilizes `mutableStateListOf` and local state management to persist score history and user preferences.
+- **Asynchronous Programming**: Built with **Kotlin Coroutines & Flow** for non-blocking asynchronous operations and timer countdowns.
 
 ---
 
-## 🚀 Advanced API Features (CP3406 & CP5307 Requirements)
-
-### 1. Networking & Internet Connectivity
-- Simulates remote API fetching and syncing of course catalogs and updates asynchronously via suspending Coroutine functions, ensuring smooth data flow and network responsiveness.
-
-### 2. WorkManager Background Tasks (CP5307)
-- Implements `ProgressSyncWorker` using **WorkManager** to handle periodic background synchronization of learning statistics and study progress in a lifecycle-aware manner.
-
-### 3. Ethical Runtime Permissions (CP5307)
-- Implements runtime permission handling for **Push Notifications (`POST_NOTIFICATIONS`)**. 
-- **Ethical Rationale**: In alignment with Assessment 2 ethics research (ACS Code of Ethics §2.1 & §2.3) and Android privacy best practices (`MASVS-PRIVACY-1`), permissions are never requested eagerly on startup. Instead, the app provides a plain-language contextual rationale explaining the exact benefits of study reminders before triggering the system prompt, and fully respects user denial without locking features.
+## 📦 GitHub Repository & Commit History
+- **Repository URL**: [https://github.com/JCU-Mobile-Tech/mohammedEduApp.git](https://github.com/JCU-Mobile-Tech/mohammedEduApp.git)
+- **Commit Count**: 29 professional commits.
 
 ---
 
 ## 🧪 Unit Testing
-- Includes non-GUI unit tests (`CourseModelTest.kt`) verifying model integrity, course creation, and filtering logic to guarantee code stability and correctness.
-
----
-
-## 🛡️ Ethical & Professional Design Principles
-Drawing directly from Assessment 2 research (Liu & Khalil, 2023; Soffer & Cohen, 2024; ACS Code of Professional Ethics):
-- **Data Minimization**: Collects only data necessary for core educational features.
-- **Transparency & User Autonomy**: Clear notices on permissions and local storage; users retain full control over enrollment and settings.
-- **Security & Privacy by Design**: Secure local state handling with zero sensitive logging.
-
-<!-- Verified for Lecturer Demonstration -->
-<!-- Verified for Lecturer Demonstration -->
-<!-- Verified for Lecturer Demonstration -->
+- Includes unit tests (`QuizTopicModelTest.kt`) verifying model integrity, question counts, and filtering logic.

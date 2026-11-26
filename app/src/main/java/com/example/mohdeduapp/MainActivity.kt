@@ -2,6 +2,7 @@ package com.example.mohdeduapp
 
 import android.media.ToneGenerator
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,12 +12,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.mohdeduapp.ui.theme.MohdEduAppTheme
@@ -39,6 +42,7 @@ data class QuizQuestion(
 )
 
 data class QuizScoreRecord(
+    val playerName: String,
     val topicTitle: String,
     val score: Int,
     val total: Int,
@@ -56,9 +60,9 @@ class MainActivity : ComponentActivity() {
 
             val scoreList = remember {
                 mutableStateListOf(
-                    QuizScoreRecord("Jetpack Compose Quiz", 5, 5, "Today"),
-                    QuizScoreRecord("Kotlin Coroutines & Flow", 4, 5, "Yesterday"),
-                    QuizScoreRecord("MVVM & Clean Architecture", 5, 5, "2 days ago"),
+                    QuizScoreRecord("Player 1", "Jetpack Compose Quiz", 5, 5, "Today"),
+                    QuizScoreRecord("Alex", "Kotlin Coroutines & Flow", 4, 5, "Yesterday"),
+                    QuizScoreRecord("Player 1", "MVVM & Clean Architecture", 5, 5, "2 days ago"),
                 )
             }
 
@@ -88,8 +92,12 @@ fun QuizAppRoot(
     timerEnabled: Boolean,
     onTimerEnabledChanged: (Boolean) -> Unit,
 ) {
-    var selectedTab by remember { mutableIntStateOf(3) } // Default to settings or topics as needed
+    var selectedTab by remember { mutableIntStateOf(0) }
     var activeQuizTopic by remember { mutableStateOf<QuizTopic?>(null) }
+    var currentPlayerName by remember { mutableStateOf("Player 1") }
+    var pendingTopicToStart by remember { mutableStateOf<QuizTopic?>(null) }
+    var showPlayerDialog by remember { mutableStateOf(false) }
+
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
     var selectedDifficulty by remember { mutableStateOf("All") }
@@ -104,6 +112,42 @@ fun QuizAppRoot(
             QuizTopic(3, "Data Structures & Algorithms", "Algorithms", "Assess essential DSA patterns, search trees, and complexity analysis.", 12),
             QuizTopic(4, "MVVM & Clean Architecture", "Architecture", "Test your understanding of scalable app architecture, ViewModels, and repositories.", 12),
             QuizTopic(5, "Room Database & SQLite", "Database", "Practice local persistence, entities, DAOs, and migration queries.", 12),
+        )
+    }
+
+    if (showPlayerDialog) {
+        var tempName by remember { mutableStateOf(currentPlayerName) }
+        AlertDialog(
+            onDismissRequest = { showPlayerDialog = false },
+            title = { Text("Enter Player / Quiz Participant") },
+            text = {
+                Column {
+                    Text("Enter player name before starting the quiz:")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = tempName,
+                        onValueChange = { tempName = it },
+                        singleLine = true,
+                        label = { Text("Player Name") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (tempName.isNotBlank()) {
+                        currentPlayerName = tempName.trim()
+                    }
+                    showPlayerDialog = false
+                    activeQuizTopic = pendingTopicToStart
+                }) {
+                    Text("Start Quiz")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPlayerDialog = false }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 
@@ -163,10 +207,11 @@ fun QuizAppRoot(
         if (activeQuizTopic != null) {
             QuizScreen(
                 topic = activeQuizTopic!!,
+                playerName = currentPlayerName,
                 soundEnabled = soundEnabled,
                 timerEnabled = timerEnabled,
                 onFinishQuiz = { score, total ->
-                    scoreList.add(0, QuizScoreRecord(activeQuizTopic!!.title, score, total, "Just now"))
+                    scoreList.add(0, QuizScoreRecord(currentPlayerName, activeQuizTopic!!.title, score, total, "Just now"))
                     activeQuizTopic = null
                     selectedTab = 2 // Jump to scores
                 },
@@ -185,12 +230,20 @@ fun QuizAppRoot(
                     onDifficultySelected = { selectedDifficulty = it },
                     searchQuery = searchQuery,
                     onSearchQueryChanged = { searchQuery = it },
-                    onStartQuiz = { activeQuizTopic = it },
+                    currentPlayerName = currentPlayerName,
+                    onPlayerNameChanged = { currentPlayerName = it },
+                    onStartQuiz = { topic ->
+                        pendingTopicToStart = topic
+                        showPlayerDialog = true
+                    },
                     modifier = Modifier.padding(innerPadding),
                 )
                 1 -> ActivityStartScreen(
                     topics = topics,
-                    onStartQuiz = { activeQuizTopic = it },
+                    onStartQuiz = { topic ->
+                        pendingTopicToStart = topic
+                        showPlayerDialog = true
+                    },
                     modifier = Modifier.padding(innerPadding),
                 )
                 2 -> ScoresScreen(
@@ -223,6 +276,8 @@ fun TopicsScreen(
     onDifficultySelected: (String) -> Unit,
     searchQuery: String,
     onSearchQueryChanged: (String) -> Unit,
+    currentPlayerName: String,
+    onPlayerNameChanged: (String) -> Unit,
     onStartQuiz: (QuizTopic) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -245,15 +300,22 @@ fun TopicsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "Welcome to EduQuiz 🧠",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "Welcome, $currentPlayerName 👤",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Badge { Text("Active Player") }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Explore 60+ curriculum-aligned questions across 5 core topics, featuring random selection, timers, instant explanations, and score tracking.",
+                        text = "Ready for your quiz? Scores are tracked per player in the Score History tab.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
@@ -261,23 +323,37 @@ fun TopicsScreen(
             }
         }
 
+        // Tap to Flip Daily Flashcard
         item {
+            var flashcardFlipped by remember { mutableStateOf(false) }
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { flashcardFlipped = !flashcardFlipped },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Default.Lightbulb, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Study Tip of the Day 💡", fontWeight = FontWeight.Bold)
-                        Text("Take regular quizzes to improve long-term memory retention and exam scores!", style = MaterialTheme.typography.bodySmall)
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("💡 Daily Quick Flashcard", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Badge { Text(if (flashcardFlipped) "Answer" else "Question") }
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = if (!flashcardFlipped) "Q: What annotation marks a Composable function in Jetpack Compose?" else "A: @Composable",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tap card to flip ⟳",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
                 }
             }
         }
@@ -441,6 +517,7 @@ fun ActivityStartScreen(
 @Composable
 fun QuizScreen(
     topic: QuizTopic,
+    playerName: String,
     soundEnabled: Boolean,
     timerEnabled: Boolean,
     onFinishQuiz: (Int, Int) -> Unit,
@@ -573,13 +650,12 @@ fun QuizScreen(
         ) {
             Button(onClick = onCancel) { Text("Exit Quiz") }
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Player: $playerName", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(12.dp))
                 if (timerEnabled) {
                     Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                    Text("Time: ${timeLeft}s", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("${timeLeft}s", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                 }
-                Icon(Icons.Default.LocalFireDepartment, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                Text("Streak: $streakCount", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -596,6 +672,7 @@ fun QuizScreen(
                 ) {
                     Text("Quiz Completed! 🎉", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
+                    Text("Player: $playerName", style = MaterialTheme.typography.titleMedium)
                     Text("Your Score: $correctCount / ${randomQuestions.size}", style = MaterialTheme.typography.titleLarge)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = { onFinishQuiz(correctCount, randomQuestions.size) }) {
@@ -610,7 +687,7 @@ fun QuizScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                text = "Question ${currentIndex + 1} of ${randomQuestions.size} (Randomly Selected from 12)",
+                text = "Question ${currentIndex + 1} of ${randomQuestions.size} (Player: $playerName)",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -701,7 +778,7 @@ fun ScoresScreen(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Track your quiz performance and score metrics.",
+                text = "Track quiz performance and scores grouped by players.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -725,7 +802,9 @@ fun ScoresScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
-                            Text(record.topicTitle, fontWeight = FontWeight.Bold)
+                            Text("👤 Player: ${record.playerName}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(record.topicTitle, style = MaterialTheme.typography.bodyMedium)
                             Text("Date: ${record.date}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                         }
                         Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
@@ -753,11 +832,8 @@ fun SettingsScreen(
     onClearScores: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var notificationsEnabled by remember { mutableStateOf(true) }
-    var vibrationEnabled by remember { mutableStateOf(true) }
-    var highContrastMode by remember { mutableStateOf(false) }
-    var analyticsEnabled by remember { mutableStateOf(true) }
-    var autoSyncEnabled by remember { mutableStateOf(true) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
     if (showClearConfirm) {
@@ -769,6 +845,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     onClearScores()
                     showClearConfirm = false
+                    Toast.makeText(context, "Score history cleared successfully!", Toast.LENGTH_SHORT).show()
                 }) {
                     Text("Clear", color = MaterialTheme.colorScheme.error)
                 }
@@ -870,90 +947,6 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Vibration, contentDescription = null)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Haptic Feedback", fontWeight = FontWeight.Bold)
-                                Text("Vibrate on button taps", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                            }
-                        }
-                        Switch(
-                            checked = vibrationEnabled,
-                            onCheckedChange = { vibrationEnabled = it },
-                        )
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Visibility, contentDescription = null)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("High Contrast Mode", fontWeight = FontWeight.Bold)
-                                Text("Enhance UI element contrast", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                            }
-                        }
-                        Switch(
-                            checked = highContrastMode,
-                            onCheckedChange = { highContrastMode = it },
-                        )
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CloudSync, contentDescription = null)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Auto-Sync Scores", fontWeight = FontWeight.Bold)
-                                Text("Sync scores to cloud server", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                            }
-                        }
-                        Switch(
-                            checked = autoSyncEnabled,
-                            onCheckedChange = { autoSyncEnabled = it },
-                        )
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Analytics, contentDescription = null)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text("Usage Analytics", fontWeight = FontWeight.Bold)
-                                Text("Share anonymous diagnostic logs", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                            }
-                        }
-                        Switch(
-                            checked = analyticsEnabled,
-                            onCheckedChange = { analyticsEnabled = it },
-                        )
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Notifications, contentDescription = null)
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
@@ -973,14 +966,65 @@ fun SettingsScreen(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Storage & Telemetry", fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Local Database: Room SQLite (Encrypted)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                    Text("Cache Size: 4.2 MB • Sync Status: Online", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                    Text("Security Protocol: TLS 1.3 / OAuth2", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Text("Support & Community", fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                Toast.makeText(context, "Thank you for rating 5 stars! ⭐", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("Rate EduQuiz", fontWeight = FontWeight.Bold)
+                            Text("Support us with a 5-star rating", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                Toast.makeText(context, "App share link copied to clipboard! 🤝", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("Share with Friends", fontWeight = FontWeight.Bold)
+                            Text("Invite your classmates to practice", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                Toast.makeText(context, "EduQuiz helps students practice Android & algorithms.", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Help, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text("Help & FAQ", fontWeight = FontWeight.Bold)
+                            Text("Learn how to use quizzes & timers", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                    }
                 }
             }
         }
@@ -1013,8 +1057,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text("About EduQuiz", fontWeight = FontWeight.Bold)
-                            Text("Version 1.0.0 • Built with Jetpack Compose & Material 3", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                            Text("Target SDK 35 • JCU Mobile Technologies", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                            Text("Version 1.0.0 • Built with Jetpack Compose", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                         }
                     }
                 }
